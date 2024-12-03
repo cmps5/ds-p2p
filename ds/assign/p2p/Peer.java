@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import poisson.*; 
 
 public class Peer {
     String host;
@@ -129,6 +130,8 @@ class Client implements Runnable {
     @Override
     public void run() {
         Random random = new Random();
+        double lambda = 4;
+		PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
                 double number = random.nextDouble();
@@ -136,7 +139,9 @@ class Client implements Runnable {
                     peer.numbers.add(number);
                 }
                 peer.logger.info("Generated number: " + number);
-                Thread.sleep(10000); // Generate a number every 10 seconds
+
+                double t = pp.timeForNextEvent() * 60.0 * 1000.0;
+                Thread.sleep((int) t); 
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -154,10 +159,14 @@ class Synchronizer implements Runnable {
     @Override
     public void run() {
         Random random = new Random();
+        double lambda = 4;
+		PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
+                double t = pp.timeForNextEvent() * 60.0 * 1000.0;
+                
                 if (peer.neighbors.isEmpty()) {
-                    Thread.sleep(60000);
+                    Thread.sleep((int) t);
                     continue;
                 }
 
@@ -181,7 +190,7 @@ class Synchronizer implements Runnable {
                     peer.logger.warning("Failed to synchronize with " + neighbor);
                 }
 
-                Thread.sleep(60000); // Synchronize every 1 minute
+                Thread.sleep((int) t);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
