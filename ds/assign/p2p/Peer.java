@@ -16,18 +16,21 @@ import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import poisson.*; 
+import java.io.Serializable;
 
 public class Peer {
     String host;
     int port;
     Set<Double> numbers;
-    List<Neighbor> neighbors;
+    List<Node> neighbors;
+    Set<Node> nodes;
     Logger logger;
 
     public Peer(String host, int port) {
         this.host = host;
         this.port = port;
         this.numbers = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        this.nodes = Collections.newSetFromMap(new ConcurrentHashMap<>());
         this.neighbors = new ArrayList<>();
         this.logger = Logger.getLogger("logfile");
         try {
@@ -50,17 +53,20 @@ public class Peer {
         int port = Integer.parseInt(args[1]);
 
         Peer peer = new Peer(host, port);
+        peer.nodes.add(new Node(host, port));
 
         for (int i = 2; i < args.length; i += 2) {
             String neighborHost = args[i];
             int neighborPort = Integer.parseInt(args[i + 1]);
-            peer.neighbors.add(new Neighbor(neighborHost, neighborPort));
+            Node node = new Node(neighborHost, neighborPort);
+            peer.neighbors.add(node);
+            peer.nodes.add(node);
         }
 
         System.out.printf("Peer started at %s:%d\n", host, port);
 
         new Thread(new Server(peer)).start();
-        new Thread(new Client(peer)).start();
+        //new Thread(new Client(peer)).start();
         new Thread(new Synchronizer(peer)).start();
     }
 }
@@ -170,22 +176,36 @@ class Synchronizer implements Runnable {
                     continue;
                 }
 
-                Neighbor neighbor = peer.neighbors.get(random.nextInt(peer.neighbors.size()));
+                Node neighbor = peer.neighbors.get(random.nextInt(peer.neighbors.size()));
                 try (Socket socket = new Socket(neighbor.host, neighbor.port);
                      ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                      ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
                     synchronized (peer.numbers) {
-                        out.writeObject(peer.numbers);
+                    //    out.writeObject(peer.numbers);
+                    }
+
+                    //@SuppressWarnings("unchecked")
+                    //Set<Double> receivedSet = (Set<Double>) in.readObject();
+                    synchronized (peer.numbers) {
+                        //peer.numbers.addAll(receivedSet);
+                    }
+
+                    //peer.logger.info("Synchronized with " + neighbor + ", current set: " + peer.numbers);
+
+                    //
+
+                    synchronized (peer.nodes) {
+                        out.writeObject(peer.nodes);
                     }
 
                     @SuppressWarnings("unchecked")
-                    Set<Double> receivedSet = (Set<Double>) in.readObject();
-                    synchronized (peer.numbers) {
-                        peer.numbers.addAll(receivedSet);
+                    Set<Node> receivedSet = (Set<Node>) in.readObject();
+                    synchronized (peer.nodes) {
+                        peer.nodes.addAll(receivedSet);
                     }
 
-                    peer.logger.info("Synchronized with " + neighbor + ", current set: " + peer.numbers);
+                    peer.logger.info("Synchronized with " + neighbor + ", current set: " + peer.nodes);
                 } catch (Exception e) {
                     peer.logger.warning("Failed to synchronize with " + neighbor);
                 }
@@ -198,11 +218,11 @@ class Synchronizer implements Runnable {
     }
 }
 
-class Neighbor {
+class Node implements Serializable {
     String host;
     int port;
 
-    public Neighbor(String host, int port) {
+    public Node(String host, int port) {
         this.host = host;
         this.port = port;
     }
