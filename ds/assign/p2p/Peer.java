@@ -15,8 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
-import poisson.*; 
+import poisson.*;
 import java.io.Serializable;
+import java.util.Objects;
 
 public class Peer {
     String host;
@@ -66,7 +67,7 @@ public class Peer {
         System.out.printf("Peer started at %s:%d\n", host, port);
 
         new Thread(new Server(peer)).start();
-        //new Thread(new Client(peer)).start();
+        // new Thread(new Client(peer)).start();
         new Thread(new Synchronizer(peer)).start();
     }
 }
@@ -108,18 +109,18 @@ class Connection implements Runnable {
     @Override
     public void run() {
         try (ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
-             ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
+                ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
 
             @SuppressWarnings("unchecked")
-            Set<Double> receivedSet = (Set<Double>) in.readObject();
-            peer.logger.info("Received set for synchronization: " + receivedSet);
+            Set<Node> receivedSet = (Set<Node>) in.readObject();
+            // peer.logger.info("Received set for synchronization: " + receivedSet);
 
-            synchronized (peer.numbers) {
-                peer.numbers.addAll(receivedSet);
+            synchronized (peer.nodes) {
+                peer.nodes.addAll(receivedSet);
                 out.writeObject(peer.numbers);
             }
 
-            peer.logger.info("Synchronized set: " + peer.numbers);
+            // peer.logger.info("Synchronized set: " + peer.nodes);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -137,7 +138,7 @@ class Client implements Runnable {
     public void run() {
         Random random = new Random();
         double lambda = 4;
-		PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
+        PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
                 double number = random.nextDouble();
@@ -147,7 +148,7 @@ class Client implements Runnable {
                 peer.logger.info("Generated number: " + number);
 
                 double t = pp.timeForNextEvent() * 60.0 * 1000.0;
-                Thread.sleep((int) t); 
+                Thread.sleep((int) t);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -166,11 +167,11 @@ class Synchronizer implements Runnable {
     public void run() {
         Random random = new Random();
         double lambda = 4;
-		PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
+        PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
                 double t = pp.timeForNextEvent() * 60.0 * 1000.0;
-                
+
                 if (peer.neighbors.isEmpty()) {
                     Thread.sleep((int) t);
                     continue;
@@ -178,22 +179,8 @@ class Synchronizer implements Runnable {
 
                 Node neighbor = peer.neighbors.get(random.nextInt(peer.neighbors.size()));
                 try (Socket socket = new Socket(neighbor.host, neighbor.port);
-                     ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-                     ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
-                    synchronized (peer.numbers) {
-                    //    out.writeObject(peer.numbers);
-                    }
-
-                    //@SuppressWarnings("unchecked")
-                    //Set<Double> receivedSet = (Set<Double>) in.readObject();
-                    synchronized (peer.numbers) {
-                        //peer.numbers.addAll(receivedSet);
-                    }
-
-                    //peer.logger.info("Synchronized with " + neighbor + ", current set: " + peer.numbers);
-
-                    //
+                        ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+                        ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
                     synchronized (peer.nodes) {
                         out.writeObject(peer.nodes);
@@ -205,7 +192,8 @@ class Synchronizer implements Runnable {
                         peer.nodes.addAll(receivedSet);
                     }
 
-                    peer.logger.info("Synchronized with " + neighbor + ", current set: " + peer.nodes);
+                    peer.logger.info("Synchronized with " + neighbor);
+                    peer.logger.info("Synchronized set: " + peer.nodes);
                 } catch (Exception e) {
                     peer.logger.warning("Failed to synchronize with " + neighbor);
                 }
@@ -230,5 +218,21 @@ class Node implements Serializable {
     @Override
     public String toString() {
         return host + ":" + port;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        Node node = (Node) o;
+        return port == node.port && Objects.equals(host, node.host);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(host, port);
     }
 }
