@@ -3,21 +3,23 @@ package ds.assign.p2p;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+
 import poisson.*;
-import java.io.Serializable;
-import java.util.Objects;
 
 public class Peer {
     String host;
@@ -26,6 +28,8 @@ public class Peer {
     List<Node> neighbors;
     Set<Node> nodes;
     Logger logger;
+
+    public static final long TIMEOUT = 5 * 60 * 1000; // 5 min timeout
 
     public Peer(String host, int port) {
         this.host = host;
@@ -209,10 +213,20 @@ class Synchronizer implements Runnable {
 class Node implements Serializable {
     String host;
     int port;
+    Timestamp timestamp;
 
     public Node(String host, int port) {
         this.host = host;
         this.port = port;
+        this.timestamp = new Timestamp(System.currentTimeMillis());
+    }
+
+    public void setTimestamp(Timestamp t) {
+        this.timestamp = t;
+    }
+
+    public Timestamp getTimestamp() {
+        return this.timestamp;
     }
 
     @Override
