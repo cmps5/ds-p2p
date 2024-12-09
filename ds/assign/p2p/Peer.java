@@ -26,16 +26,22 @@ public class Peer {
     int port;
     Set<Double> numbers;
     List<Node> neighbors;
+    Node localNode;
     Set<Node> nodes;
     Logger logger;
 
-    public static final long TIMEOUT = 5 * 60 * 1000; // 5 min timeout
+    public final long TIMEOUT = 2 * 60 * 1000; // 2 min timeout
 
     public Peer(String host, int port) {
         this.host = host;
         this.port = port;
+
         this.numbers = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+        this.localNode = new Node(host, port);
         this.nodes = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        this.nodes.add(localNode);
+
         this.neighbors = new ArrayList<>();
         this.logger = Logger.getLogger("logfile");
         try {
@@ -58,7 +64,6 @@ public class Peer {
         int port = Integer.parseInt(args[1]);
 
         Peer peer = new Peer(host, port);
-        peer.nodes.add(new Node(host, port));
 
         for (int i = 2; i < args.length; i += 2) {
             String neighborHost = args[i];
@@ -115,16 +120,18 @@ class Connection implements Runnable {
         try (ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
                 ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
 
+            // pull
             @SuppressWarnings("unchecked")
             Set<Node> receivedSet = (Set<Node>) in.readObject();
             // peer.logger.info("Received set for synchronization: " + receivedSet);
 
+            // push
             synchronized (peer.nodes) {
                 peer.nodes.addAll(receivedSet);
-                out.writeObject(peer.numbers);
+                out.writeObject(peer.nodes);
             }
 
-            // peer.logger.info("Synchronized set: " + peer.nodes);
+            peer.logger.info("Synchronized set: " + peer.nodes);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -186,15 +193,29 @@ class Synchronizer implements Runnable {
                         ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                         ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
+                    // push
                     synchronized (peer.nodes) {
+                        peer.localNode.setTimestamp(new Timestamp(System.currentTimeMillis()));
+                        peer.logger.info("Updated Timestamp: " + peer.localNode.getTimestamp());
                         out.writeObject(peer.nodes);
                     }
 
+                    // pull
                     @SuppressWarnings("unchecked")
                     Set<Node> receivedSet = (Set<Node>) in.readObject();
                     synchronized (peer.nodes) {
                         peer.nodes.addAll(receivedSet);
                     }
+
+                    /*
+                     * for (Node n : peer.nodes) {
+                     * if (System.currentTimeMillis() - n.getTimestamp().getTime() > peer.TIMEOUT) {
+                     * System.out.println(n);
+                     * peer.nodes.remove(n);
+                     * peer.neighbors.remove(n);
+                     * }
+                     * }
+                     */
 
                     peer.logger.info("Synchronized with " + neighbor);
                     peer.logger.info("Synchronized set: " + peer.nodes);
