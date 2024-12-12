@@ -30,6 +30,7 @@ public class Peer {
     Set<Node> nodes;
     Logger logger;
 
+    // @ TODO
     public final long TIMEOUT = 2 * 60 * 1000; // 2 min timeout
 
     public Peer(String host, int port) {
@@ -177,7 +178,7 @@ class Synchronizer implements Runnable {
     @Override
     public void run() {
         Random random = new Random();
-        double lambda = 4;
+        double lambda = 2; // 2 per min
         PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
