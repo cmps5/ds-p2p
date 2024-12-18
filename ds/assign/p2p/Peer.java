@@ -9,11 +9,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
@@ -38,7 +38,7 @@ public class Peer {
 
         this.localNode = new Node(host, port);
 
-        this.nodes = new HashMap<>();
+        this.nodes = new ConcurrentHashMap<>();
         this.nodes.put(localNode, new Timestamp(System.currentTimeMillis()));
 
         this.neighbors = new ArrayList<>();
@@ -119,13 +119,8 @@ class Connection implements Runnable {
                 ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
 
             @SuppressWarnings("unchecked")
-            Map<Node, Timestamp> receivedMap = new HashMap<>();
+            Map<Node, Timestamp> receivedMap = (Map<Node, Timestamp>) in.readObject();
 
-            if (in.available() != 0) {
-                @SuppressWarnings("unchecked")
-                Map<Node, Timestamp> received = (Map<Node, Timestamp>) in.readObject();
-                receivedMap = received;
-            }
             synchronized (peer.nodes) {
                 for (Map.Entry<Node, Timestamp> entry : receivedMap.entrySet()) {
                     Node key = entry.getKey();
@@ -145,6 +140,9 @@ class Connection implements Runnable {
                         peer.logger.warning("Peer removed: " + key);
                     }
                 }
+
+                peer.nodes.put(peer.localNode, new Timestamp(System.currentTimeMillis()));
+                // peer.logger.info("Updated Timestamp: " + peer.nodes.get(peer.localNode));
                 out.writeObject(peer.nodes);
             }
 
@@ -173,6 +171,7 @@ class Synchronizer implements Runnable {
                 int t = 4 * 1000;
 
                 if (peer.neighbors.isEmpty()) {
+                    System.out.println("EMPTY");
                     Thread.sleep((int) t);
                     continue;
                 }
@@ -191,19 +190,7 @@ class Synchronizer implements Runnable {
                     // push
                     synchronized (peer.nodes) {
                         peer.nodes.put(peer.localNode, new Timestamp(System.currentTimeMillis()));
-                        peer.logger.info("Updated Timestamp: " + peer.nodes.get(peer.localNode));
-
-                        for (Map.Entry<Node, Timestamp> entry : peer.nodes.entrySet()) {
-                            Node key = entry.getKey();
-                            Timestamp value = entry.getValue();
-                            Timestamp curTimestamp = new Timestamp(System.currentTimeMillis());
-
-                            if (curTimestamp.getTime() - value.getTime() > peer.TIMEOUT) {
-                                peer.nodes.remove(key);
-                                peer.neighbors.remove(key);
-                                peer.logger.warning("Peer removed: " + key);
-                            }
-                        }
+                        // peer.logger.info("Updated Timestamp: " + peer.nodes.get(peer.localNode));
 
                         out.writeObject(peer.nodes);
                     }
@@ -227,6 +214,7 @@ class Synchronizer implements Runnable {
                             if (curTimestamp.getTime() - value.getTime() > peer.TIMEOUT) {
                                 peer.nodes.remove(key);
                                 peer.neighbors.remove(key);
+                                peer.logger.warning("Peer removed: " + key);
                             }
                         }
                     }
@@ -235,6 +223,15 @@ class Synchronizer implements Runnable {
                     peer.logger.info("Synchronized map: " + peer.nodes.keySet());
                 } catch (Exception e) {
                     peer.logger.warning("Failed to synchronize with " + neighbor);
+                    Timestamp neighborTimestamp = peer.nodes.get(neighbor);
+                    Timestamp curTimestamp = new Timestamp(System.currentTimeMillis());
+
+                    if (curTimestamp.getTime() - neighborTimestamp.getTime() > peer.TIMEOUT) {
+                        peer.nodes.remove(neighbor);
+                        peer.neighbors.remove(neighbor);
+                        peer.logger.warning("Peer removed: " + neighbor);
+                        peer.logger.info("Synchronized map: " + peer.nodes.keySet());
+                    }
                 }
 
                 Thread.sleep((int) t);
