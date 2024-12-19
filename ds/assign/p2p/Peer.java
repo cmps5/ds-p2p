@@ -28,9 +28,7 @@ public class Peer {
     Map<Node, Timestamp> nodes;
     Logger logger;
 
-    // @ TODO
-    // public final long TIMEOUT = 1 * 60 * 1000; // 2 min timeout
-    public final long TIMEOUT = 30 * 1000; // 30 secs
+    public final long TIMEOUT = 10 * 60 * 1000; // 10 min timeout
 
     public Peer(String host, int port) {
         this.host = host;
@@ -75,7 +73,7 @@ public class Peer {
         System.out.printf("Peer started at %s:%d\n", host, port);
 
         new Thread(new Server(peer)).start();
-        new Thread(new Synchronizer(peer)).start();
+        new Thread(new Client(peer)).start();
     }
 }
 
@@ -129,6 +127,11 @@ class Connection implements Runnable {
                             (oldValue, newValue) -> newValue.compareTo(oldValue) > 0 ? newValue : oldValue);
                 }
 
+                /*
+                 * remove peers when timestamps
+                 * exceed the defined timeout period
+                 */
+
                 for (Map.Entry<Node, Timestamp> entry : peer.nodes.entrySet()) {
                     Node key = entry.getKey();
                     Timestamp value = entry.getValue();
@@ -153,10 +156,10 @@ class Connection implements Runnable {
     }
 }
 
-class Synchronizer implements Runnable {
+class Client implements Runnable {
     Peer peer;
 
-    public Synchronizer(Peer peer) {
+    public Client(Peer peer) {
         this.peer = peer;
     }
 
@@ -167,8 +170,8 @@ class Synchronizer implements Runnable {
         PoissonProcess pp = new PoissonProcess(lambda, new Random(0));
         while (true) {
             try {
-                // double t = pp.timeForNextEvent() * 60.0 * 1000.0;
-                int t = 4 * 1000;
+                double t = pp.timeForNextEvent() * 60.0 * 1000.0;
+                // int t = 4 * 1000;
 
                 if (peer.neighbors.isEmpty()) {
                     System.out.println("EMPTY");
@@ -187,7 +190,9 @@ class Synchronizer implements Runnable {
                         ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                         ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
-                    // push
+                    /*
+                     * push
+                     */
                     synchronized (peer.nodes) {
                         peer.nodes.put(peer.localNode, new Timestamp(System.currentTimeMillis()));
                         // peer.logger.info("Updated Timestamp: " + peer.nodes.get(peer.localNode));
@@ -195,7 +200,9 @@ class Synchronizer implements Runnable {
                         out.writeObject(peer.nodes);
                     }
 
-                    // pull
+                    /*
+                     * pull
+                     */
                     @SuppressWarnings("unchecked")
                     Map<Node, Timestamp> receivedMap = (Map<Node, Timestamp>) in.readObject();
                     synchronized (peer.nodes) {
@@ -206,6 +213,10 @@ class Synchronizer implements Runnable {
                                     (oldValue, newValue) -> newValue.compareTo(oldValue) > 0 ? newValue : oldValue);
                         }
 
+                        /*
+                         * remove peers when timestamps
+                         * exceed the defined timeout period
+                         */
                         for (Map.Entry<Node, Timestamp> entry : peer.nodes.entrySet()) {
                             Node key = entry.getKey();
                             Timestamp value = entry.getValue();
@@ -221,8 +232,15 @@ class Synchronizer implements Runnable {
 
                     peer.logger.info("Synchronized with " + neighbor);
                     peer.logger.info("Synchronized map: " + peer.nodes.keySet());
+
                 } catch (Exception e) {
                     peer.logger.warning("Failed to synchronize with " + neighbor);
+
+                    /*
+                     * remove neighbor when timestamps
+                     * exceed the defined timeout period
+                     */
+
                     Timestamp neighborTimestamp = peer.nodes.get(neighbor);
                     Timestamp curTimestamp = new Timestamp(System.currentTimeMillis());
 
