@@ -74,6 +74,7 @@ Start each peer on its respective machine:
 - Implements a chat application with N peers.
 - Ensures a totally ordered sequence of messages using Lamport clocks.
 - Messages are sent according to a Poisson distribution (1 event/second).
+- Messages are ordered globally before processing, ensuring consistent output across all peers.
 
 #### How to Compile
 Run the following command in the project root:
@@ -88,8 +89,7 @@ Start each peer on its respective machine:
 ```
 
 #### Notes
-- All peers maintain a table with the IPs of other peers.
-- Messages are ordered globally before processing, ensuring consistent output across all peers.
+- Peers not printing the same words, but they are printed in the same order for all peers.
 
 ---
 
